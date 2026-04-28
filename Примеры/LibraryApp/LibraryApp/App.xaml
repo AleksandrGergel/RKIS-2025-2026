@@ -1,0 +1,40 @@
+﻿<Application x:Class="LibraryApp.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:LibraryApp.ViewModels"
+             xmlns:views="clr-namespace:LibraryApp.Views">
+
+    <!-- StartupUri убран — окно создаётся вручную в App.xaml.cs -->
+
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- Подключаем файл со стилями кнопок -->
+                <ResourceDictionary Source="Resources/ButtonStyles.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <!-- BooleanToVisibilityConverter — встроенный конвертер WPF -->
+            <BooleanToVisibilityConverter x:Key="BoolToVis" />
+
+            <!-- DataTemplate связывает тип ViewModel с нужным UserControl.
+                 ContentControl в MainWindow автоматически выбирает View
+                 на основании типа CurrentViewModel -->
+            <DataTemplate DataType="{x:Type vm:BooksViewModel}">
+                <views:BooksView />
+            </DataTemplate>
+
+            <DataTemplate DataType="{x:Type vm:BookEditViewModel}">
+                <views:BookEditView />
+            </DataTemplate>
+
+            <DataTemplate DataType="{x:Type vm:AuthorsViewModel}">
+                <views:AuthorsView />
+            </DataTemplate>
+
+            <DataTemplate DataType="{x:Type vm:AuthorEditViewModel}">
+                <views:AuthorEditView />
+            </DataTemplate>
+
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>
