@@ -1,15 +1,13 @@
 using System;
-using System.Text;
-using TodoApp.Models;
 using TodoApp.Services;
 
 namespace TodoApp.Commands
 {
     public class ViewCommand : ICommand
     {
-        private bool _showIndex;
-        private bool _showStatus;
-        private bool _showDate;
+        private readonly bool _showIndex;
+        private readonly bool _showStatus;
+        private readonly bool _showDate;
 
         public ViewCommand(bool showIndex = false, bool showStatus = false, bool showDate = false)
         {
@@ -20,16 +18,14 @@ namespace TodoApp.Commands
 
         public void Execute()
         {
-            var todos = AppInfo.GetCurrentTodoList();
-            if (todos == null || todos.Count == 0)
+            var todos = AppInfo.RequireCurrentTodoList();
+            if (todos.Count == 0)
             {
                 Console.WriteLine("Список задач пуст.");
                 return;
             }
 
-			Console.WriteLine(todos.GetTable(_showIndex, _showStatus, _showDate));
-		}
-
-
+            Console.WriteLine(todos.GetTable(_showIndex, _showStatus, _showDate));
+        }
     }
 }

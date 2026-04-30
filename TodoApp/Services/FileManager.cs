@@ -37,7 +37,7 @@ namespace TodoApp.Services
             SaveAllProfiles(profiles, filePath);
         }
 
-        public static Profile LoadProfile(string login, string password)
+        public static Profile? LoadProfile(string login, string password)
         {
             var profiles = LoadAllProfiles();
             return profiles.FirstOrDefault(p => p.Login == login && p.Password == password);
@@ -62,16 +62,18 @@ namespace TodoApp.Services
                     continue;
 
                 var parts = line.Split(';');
-                if (parts.Length == 6)
+                if (parts.Length == 6
+                    && Guid.TryParse(parts[0], out var id)
+                    && int.TryParse(parts[5], out var birthYear))
                 {
                     var profile = new Profile
                     {
-                        Id = Guid.Parse(parts[0]),
+                        Id = id,
                         Login = parts[1],
                         Password = parts[2],
                         FirstName = parts[3],
                         LastName = parts[4],
-                        BirthYear = int.Parse(parts[5])
+                        BirthYear = birthYear
                     };
                     profiles.Add(profile);
                 }
@@ -123,11 +125,11 @@ namespace TodoApp.Services
                     continue;
 
                 var parts = ParseCsvLine(line);
-                if (parts.Count >= 4)
+                if (parts.Count >= 4
+                    && Enum.TryParse<TodoStatus>(parts[2], out var status)
+                    && DateTime.TryParse(parts[3], out DateTime lastUpdate))
                 {
                     string text = UnescapeCsv(parts[1]);
-                    var status = Enum.Parse<TodoStatus>(parts[2]);
-                    DateTime.TryParse(parts[3], out DateTime lastUpdate);
 
                     var item = new TodoItem(text)
                     {

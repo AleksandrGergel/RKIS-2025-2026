@@ -9,10 +9,10 @@ namespace TodoApp.Models
 		private List<TodoItem> _items;
 
 		// События
-		public event Action<TodoItem> OnTodoAdded;
-		public event Action<TodoItem> OnTodoDeleted;
-		public event Action<TodoItem> OnTodoUpdated;
-		public event Action<TodoItem> OnStatusChanged;
+		public event Action<TodoItem>? OnTodoAdded;
+		public event Action<TodoItem>? OnTodoDeleted;
+		public event Action<TodoItem>? OnTodoUpdated;
+		public event Action<TodoItem>? OnStatusChanged;
 
 		public TodoList()
 		{
@@ -35,7 +35,7 @@ namespace TodoApp.Models
 			}
 		}
 
-		public TodoItem GetItem(int index)
+		public TodoItem? GetItem(int index)
 		{
 			if (index >= 0 && index < _items.Count)
 			{
@@ -64,11 +64,11 @@ namespace TodoApp.Models
 
 		public int Count => _items.Count;
 
-		public TodoItem this[int index]
+		public TodoItem? this[int index]
 		{
 			set
 			{
-				if (index >= 0 && index < _items.Count)
+				if (value != null && index >= 0 && index < _items.Count)
 				{
 					_items[index] = value;
 					OnTodoUpdated?.Invoke(value);

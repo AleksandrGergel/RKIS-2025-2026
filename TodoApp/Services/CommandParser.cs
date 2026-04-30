@@ -3,13 +3,14 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
 using TodoApp.Commands;
+using TodoApp.Exceptions;
 using TodoApp.Models;
 
 namespace TodoApp.Services
 {
     public static class CommandParser
     {
-        private static Dictionary<string, Func<string, ICommand>> _commandHandlers;
+        private static Dictionary<string, Func<string, ICommand>> _commandHandlers = new();
         public static TodoList? Todos => AppInfo.GetCurrentTodoList();
 
         static CommandParser()
@@ -39,32 +40,25 @@ namespace TodoApp.Services
         {
             if (string.IsNullOrWhiteSpace(inputString))
             {
-                return new HelpCommand();
+                throw new InvalidCommandException("Команда не может быть пустой.");
             }
 
             var trimmedInput = inputString.Trim();
             var commandMatch = Regex.Match(trimmedInput, @"^\S+");
             if (!commandMatch.Success)
-                return new HelpCommand();
+            {
+                throw new InvalidCommandException("Команда не может быть пустой.");
+            }
 
             string command = commandMatch.Value.ToLower();
             string args = trimmedInput.Substring(commandMatch.Length).TrimStart();
 
-            if (_commandHandlers.ContainsKey(command))
+            if (!_commandHandlers.ContainsKey(command))
             {
-                try
-                {
-                    return _commandHandlers[command](args);
-                }
-                catch
-                {
-                    Console.WriteLine($"Ошибка при выполнении команды '{command}'");
-                    return new HelpCommand();
-                }
+                throw new InvalidCommandException($"Команда '{command}' не зарегистрирована.");
             }
 
-            Console.WriteLine($"Неизвестная команда: '{command}'. Введите 'help' для справки.");
-            return new HelpCommand();
+            return _commandHandlers[command](args);
         }
 
         private static ICommand ParseProfileCommand(string[] args)
@@ -76,15 +70,12 @@ namespace TodoApp.Services
         private static ICommand ParseAddCommand(string[] args)
         {
             bool isMultiline = args.Any(a => a == "-m" || a == "--multiline");
-
             if (isMultiline)
             {
-                return new AddCommand("", true);
+                return new AddCommand(string.Empty, true);
             }
 
-            string text = string.Join(" ", args);
-            text = text.Trim('"');
-
+            string text = string.Join(" ", args).Trim('"');
             return new AddCommand(text, false);
         }
 
@@ -92,7 +83,7 @@ namespace TodoApp.Services
         {
             bool showIndex = args.Any(a => a == "-i" || a == "--index");
             bool showStatus = args.Any(a => a == "-s" || a == "--status");
-            bool showDate = args.Any(a => a == "-d" || a == "--update-date");
+            bool showDate = args.Any(a => a == "-d" || a == "--update-date" || a == "--date");
             bool showAll = args.Any(a => a == "-a" || a == "--all");
 
             if (showAll)
@@ -118,169 +109,134 @@ namespace TodoApp.Services
                 switch (args[i])
                 {
                     case "--contains":
-                        if (!TryGetValue(args, ref i, "--contains", out contains))
-                            return new HelpCommand();
+                        contains = GetRequiredValue(args, ref i, "--contains");
                         break;
                     case "--starts-with":
-                        if (!TryGetValue(args, ref i, "--starts-with", out startsWith))
-                            return new HelpCommand();
+                        startsWith = GetRequiredValue(args, ref i, "--starts-with");
                         break;
                     case "--ends-with":
-                        if (!TryGetValue(args, ref i, "--ends-with", out endsWith))
-                            return new HelpCommand();
+                        endsWith = GetRequiredValue(args, ref i, "--ends-with");
                         break;
                     case "--from":
-                        if (!TryGetValue(args, ref i, "--from", out var fromText))
-                            return new HelpCommand();
-
-                        if (!DateTime.TryParse(fromText, out var fromDate))
-                        {
-                            Console.WriteLine("Некорректная дата. Используйте формат yyyy-MM-dd.");
-                            return new HelpCommand();
-                        }
-
-                        from = fromDate;
+                        from = ParseDate(GetRequiredValue(args, ref i, "--from"), "--from");
                         break;
                     case "--to":
-                        if (!TryGetValue(args, ref i, "--to", out var toText))
-                            return new HelpCommand();
-
-                        if (!DateTime.TryParse(toText, out var toDate))
-                        {
-                            Console.WriteLine("Некорректная дата. Используйте формат yyyy-MM-dd.");
-                            return new HelpCommand();
-                        }
-
-                        to = toDate;
+                        to = ParseDate(GetRequiredValue(args, ref i, "--to"), "--to");
                         break;
                     case "--status":
-                        if (!TryGetValue(args, ref i, "--status", out var statusText))
-                            return new HelpCommand();
-
-                        if (!TryParseStatus(statusText, out var parsedStatus))
-                        {
-                            Console.WriteLine("Неизвестный статус. Доступны: notstarted, in-progress, completed, postponed, failed");
-                            return new HelpCommand();
-                        }
-
-                        status = parsedStatus;
+                        status = ParseStatus(GetRequiredValue(args, ref i, "--status"));
                         break;
                     case "--sort":
-                        if (!TryGetValue(args, ref i, "--sort", out sort))
-                            return new HelpCommand();
-
-                        sort = sort.ToLower();
+                        sort = GetRequiredValue(args, ref i, "--sort").ToLower();
                         if (sort != "text" && sort != "date")
                         {
-                            Console.WriteLine("Некорректная сортировка. Используйте: --sort text или --sort date.");
-                            return new HelpCommand();
+                            throw new InvalidArgumentException("Сортировка должна быть text или date.");
                         }
                         break;
                     case "--desc":
                         desc = true;
                         break;
                     case "--top":
-                        if (!TryGetValue(args, ref i, "--top", out var topText))
-                            return new HelpCommand();
-
-                        if (!int.TryParse(topText, out var parsedTop) || parsedTop <= 0)
-                        {
-                            Console.WriteLine("Параметр --top должен быть положительным числом.");
-                            return new HelpCommand();
-                        }
-
-                        top = parsedTop;
+                        top = ParsePositiveInt(GetRequiredValue(args, ref i, "--top"), "--top");
                         break;
                     default:
-                        Console.WriteLine($"Неизвестный флаг search: {args[i]}");
-                        return new HelpCommand();
+                        throw new InvalidCommandException($"Неизвестный флаг search: {args[i]}");
                 }
             }
 
             return new SearchCommand(contains, startsWith, endsWith, from, to, status, sort, desc, top);
         }
 
-        private static bool TryGetValue(string[] args, ref int index, string flag, out string value)
-        {
-            value = string.Empty;
-            if (index + 1 >= args.Length || args[index + 1].StartsWith("--"))
-            {
-                Console.WriteLine($"Для {flag} нужно указать значение.");
-                return false;
-            }
-
-            value = args[++index];
-            return true;
-        }
-
-        private static bool TryParseStatus(string statusText, out TodoStatus status)
-        {
-            var normalizedStatus = statusText.Replace("-", "");
-            return Enum.TryParse(normalizedStatus, ignoreCase: true, out status);
-        }
-
         private static ICommand ParseReadCommand(string[] args)
         {
-            if (args.Length > 0 && int.TryParse(args[0], out int index))
+            if (args.Length == 0)
             {
-                return new ReadCommand(index);
+                throw new InvalidArgumentException("Используйте: read <индекс>");
             }
 
-            Console.WriteLine("Используйте: read <индекс>");
-            return new HelpCommand();
+            return new ReadCommand(ParseIndex(args[0]));
         }
 
         private static ICommand ParseStatusCommand(string[] args)
         {
             if (args.Length < 2)
             {
-                Console.WriteLine("Используйте: status <индекс> <статус>");
-                return new HelpCommand();
+                throw new InvalidArgumentException("Используйте: status <индекс> <статус>");
             }
 
-            if (!int.TryParse(args[0], out int index))
-            {
-                Console.WriteLine("Индекс должен быть числом.");
-                return new HelpCommand();
-            }
-
-            string statusStr = args[1].ToLower();
-            if (Enum.TryParse<TodoStatus>(statusStr, ignoreCase: true, out var status))
-            {
-                return new StatusCommand(index, status);
-            }
-
-            Console.WriteLine("Неизвестный статус. Доступные: NotStarted, InProgress, Completed, Postponed, Failed");
-            return new HelpCommand();
+            return new StatusCommand(ParseIndex(args[0]), ParseStatus(args[1]));
         }
 
         private static ICommand ParseUpdateCommand(string[] args)
         {
             if (args.Length < 2)
             {
-                Console.WriteLine("Используйте: update <индекс> \"новый текст\"");
-                return new HelpCommand();
-            }
-
-            if (!int.TryParse(args[0], out int index))
-            {
-                Console.WriteLine("Индекс должен быть числом.");
-                return new HelpCommand();
+                throw new InvalidArgumentException("Используйте: update <индекс> \"новый текст\"");
             }
 
             string newText = string.Join(" ", args.Skip(1)).Trim('"');
-            return new UpdateCommand(index, newText);
+            return new UpdateCommand(ParseIndex(args[0]), newText);
         }
 
         private static ICommand ParseDeleteCommand(string[] args)
         {
-            if (args.Length == 0 || !int.TryParse(args[0], out int index))
+            if (args.Length == 0)
             {
-                Console.WriteLine("Используйте: delete <индекс>");
-                return new HelpCommand();
+                throw new InvalidArgumentException("Используйте: delete <индекс>");
             }
 
-            return new DeleteCommand(index);
+            return new DeleteCommand(ParseIndex(args[0]));
+        }
+
+        private static int ParseIndex(string value)
+        {
+            if (!int.TryParse(value, out int index) || index < 0)
+            {
+                throw new InvalidArgumentException("Индекс должен быть неотрицательным числом.");
+            }
+
+            return index;
+        }
+
+        private static int ParsePositiveInt(string value, string argumentName)
+        {
+            if (!int.TryParse(value, out int number) || number <= 0)
+            {
+                throw new InvalidArgumentException($"Параметр {argumentName} должен быть положительным числом.");
+            }
+
+            return number;
+        }
+
+        private static DateTime ParseDate(string value, string argumentName)
+        {
+            if (!DateTime.TryParse(value, out var date))
+            {
+                throw new InvalidArgumentException($"Параметр {argumentName} должен быть датой в формате yyyy-MM-dd.");
+            }
+
+            return date;
+        }
+
+        private static TodoStatus ParseStatus(string value)
+        {
+            var normalizedStatus = value.Replace("-", "");
+            if (Enum.TryParse<TodoStatus>(normalizedStatus, ignoreCase: true, out var status))
+            {
+                return status;
+            }
+
+            throw new InvalidArgumentException("Неизвестный статус. Доступны: notstarted, in-progress, completed, postponed, failed.");
+        }
+
+        private static string GetRequiredValue(string[] args, ref int index, string flag)
+        {
+            if (index + 1 >= args.Length || args[index + 1].StartsWith("--") || string.IsNullOrWhiteSpace(args[index + 1]))
+            {
+                throw new InvalidArgumentException($"Для {flag} нужно указать значение.");
+            }
+
+            return args[++index];
         }
 
         private static string[] SplitCommand(string input)

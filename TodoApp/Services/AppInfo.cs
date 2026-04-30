@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using TodoApp.Commands;
+using TodoApp.Exceptions;
 using TodoApp.Models;
 
 namespace TodoApp.Services
@@ -14,13 +15,24 @@ namespace TodoApp.Services
         public static Stack<IUndoableCommand> UndoStack { get; set; } = new();
         public static Stack<IUndoableCommand> RedoStack { get; set; } = new();
 
-        public static TodoList GetCurrentTodoList()
+        public static TodoList? GetCurrentTodoList()
         {
             if (CurrentProfile != null && UserTodos.ContainsKey(CurrentProfile.Id))
             {
                 return UserTodos[CurrentProfile.Id];
             }
             return null;
+        }
+
+        public static TodoList RequireCurrentTodoList()
+        {
+            var todos = GetCurrentTodoList();
+            if (todos == null)
+            {
+                throw new AuthenticationException("Пользователь не авторизован.");
+            }
+
+            return todos;
         }
 
         public static void ClearUndoRedo()

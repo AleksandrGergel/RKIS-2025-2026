@@ -1,4 +1,4 @@
-using System;
+using TodoApp.Exceptions;
 using TodoApp.Services;
 
 namespace TodoApp.Commands
@@ -7,10 +7,11 @@ namespace TodoApp.Commands
     {
         public void Execute()
         {
+            AppInfo.RequireCurrentTodoList();
+
             if (AppInfo.UndoStack.Count == 0)
             {
-                Console.WriteLine("Нечего отменять.");
-                return;
+                throw new InvalidCommandException("Нечего отменять.");
             }
 
             var command = AppInfo.UndoStack.Pop();

@@ -43,8 +43,8 @@ namespace TodoApp.Commands
 
         public void Execute()
         {
-            var todos = CommandParser.Todos;
-            if (todos == null || todos.Count == 0)
+            var todos = AppInfo.RequireCurrentTodoList();
+            if (todos.Count == 0)
             {
                 Console.WriteLine("Ничего не найдено");
                 return;
