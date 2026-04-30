@@ -21,6 +21,10 @@ namespace TodoApp.Commands
                 ║    -s  --status         - показать статус                       ║
                 ║    -d  --date           - показать дату изменения               ║
                 ║    -a  --all            - показать всё                          ║
+                ║ search [флаги]          - найти задачи                          ║
+                ║    --contains ""текст""   --starts-with ""текст"" --ends-with ""текст"" ║
+                ║    --from yyyy-MM-dd    --to yyyy-MM-dd    --status <статус>    ║
+                ║    --sort text|date     --desc            --top <n>             ║
                 ║ read <idx>              - показать полный текст задачи          ║
                 ║ status <idx> <статус>   - изменить статус задачи                ║
                 ║    notstarted | inprogress | completed | postponed | failed     ║

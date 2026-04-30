@@ -9,7 +9,8 @@ namespace TodoApp.Services
 {
     public static class CommandParser
     {
-        private static Dictionary<string, Func<string[], ICommand>> _commandHandlers;
+        private static Dictionary<string, Func<string, ICommand>> _commandHandlers;
+        public static TodoList? Todos => AppInfo.GetCurrentTodoList();
 
         static CommandParser()
         {
@@ -18,16 +19,17 @@ namespace TodoApp.Services
 
         private static void InitializeHandlers()
         {
-            _commandHandlers = new Dictionary<string, Func<string[], ICommand>>
+            _commandHandlers = new Dictionary<string, Func<string, ICommand>>
             {
                 ["help"] = args => new HelpCommand(),
-                ["profile"] = args => ParseProfileCommand(args),
-                ["add"] = args => ParseAddCommand(args),
-                ["view"] = args => ParseViewCommand(args),
-                ["read"] = args => ParseReadCommand(args),
-                ["status"] = args => ParseStatusCommand(args),
-                ["update"] = args => ParseUpdateCommand(args),
-                ["delete"] = args => ParseDeleteCommand(args),
+                ["profile"] = args => ParseProfileCommand(SplitCommand(args)),
+                ["add"] = args => ParseAddCommand(SplitCommand(args)),
+                ["view"] = args => ParseViewCommand(SplitCommand(args)),
+                ["read"] = args => ParseReadCommand(SplitCommand(args)),
+                ["search"] = args => ParseSearchCommand(SplitCommand(args)),
+                ["status"] = args => ParseStatusCommand(SplitCommand(args)),
+                ["update"] = args => ParseUpdateCommand(SplitCommand(args)),
+                ["delete"] = args => ParseDeleteCommand(SplitCommand(args)),
                 ["undo"] = args => new UndoCommand(),
                 ["redo"] = args => new RedoCommand(),
             };
@@ -40,12 +42,13 @@ namespace TodoApp.Services
                 return new HelpCommand();
             }
 
-            var parts = SplitCommand(inputString);
-            if (parts.Length == 0)
+            var trimmedInput = inputString.Trim();
+            var commandMatch = Regex.Match(trimmedInput, @"^\S+");
+            if (!commandMatch.Success)
                 return new HelpCommand();
 
-            string command = parts[0].ToLower();
-            var args = parts.Skip(1).ToArray();
+            string command = commandMatch.Value.ToLower();
+            string args = trimmedInput.Substring(commandMatch.Length).TrimStart();
 
             if (_commandHandlers.ContainsKey(command))
             {
@@ -96,6 +99,124 @@ namespace TodoApp.Services
                 return new ViewCommand(true, true, true);
 
             return new ViewCommand(showIndex, showStatus, showDate);
+        }
+
+        private static ICommand ParseSearchCommand(string[] args)
+        {
+            string? contains = null;
+            string? startsWith = null;
+            string? endsWith = null;
+            DateTime? from = null;
+            DateTime? to = null;
+            TodoStatus? status = null;
+            string? sort = null;
+            bool desc = false;
+            int? top = null;
+
+            for (int i = 0; i < args.Length; i++)
+            {
+                switch (args[i])
+                {
+                    case "--contains":
+                        if (!TryGetValue(args, ref i, "--contains", out contains))
+                            return new HelpCommand();
+                        break;
+                    case "--starts-with":
+                        if (!TryGetValue(args, ref i, "--starts-with", out startsWith))
+                            return new HelpCommand();
+                        break;
+                    case "--ends-with":
+                        if (!TryGetValue(args, ref i, "--ends-with", out endsWith))
+                            return new HelpCommand();
+                        break;
+                    case "--from":
+                        if (!TryGetValue(args, ref i, "--from", out var fromText))
+                            return new HelpCommand();
+
+                        if (!DateTime.TryParse(fromText, out var fromDate))
+                        {
+                            Console.WriteLine("Некорректная дата. Используйте формат yyyy-MM-dd.");
+                            return new HelpCommand();
+                        }
+
+                        from = fromDate;
+                        break;
+                    case "--to":
+                        if (!TryGetValue(args, ref i, "--to", out var toText))
+                            return new HelpCommand();
+
+                        if (!DateTime.TryParse(toText, out var toDate))
+                        {
+                            Console.WriteLine("Некорректная дата. Используйте формат yyyy-MM-dd.");
+                            return new HelpCommand();
+                        }
+
+                        to = toDate;
+                        break;
+                    case "--status":
+                        if (!TryGetValue(args, ref i, "--status", out var statusText))
+                            return new HelpCommand();
+
+                        if (!TryParseStatus(statusText, out var parsedStatus))
+                        {
+                            Console.WriteLine("Неизвестный статус. Доступны: notstarted, in-progress, completed, postponed, failed");
+                            return new HelpCommand();
+                        }
+
+                        status = parsedStatus;
+                        break;
+                    case "--sort":
+                        if (!TryGetValue(args, ref i, "--sort", out sort))
+                            return new HelpCommand();
+
+                        sort = sort.ToLower();
+                        if (sort != "text" && sort != "date")
+                        {
+                            Console.WriteLine("Некорректная сортировка. Используйте: --sort text или --sort date.");
+                            return new HelpCommand();
+                        }
+                        break;
+                    case "--desc":
+                        desc = true;
+                        break;
+                    case "--top":
+                        if (!TryGetValue(args, ref i, "--top", out var topText))
+                            return new HelpCommand();
+
+                        if (!int.TryParse(topText, out var parsedTop) || parsedTop <= 0)
+                        {
+                            Console.WriteLine("Параметр --top должен быть положительным числом.");
+                            return new HelpCommand();
+                        }
+
+                        top = parsedTop;
+                        break;
+                    default:
+                        Console.WriteLine($"Неизвестный флаг search: {args[i]}");
+                        return new HelpCommand();
+                }
+            }
+
+            return new SearchCommand(contains, startsWith, endsWith, from, to, status, sort, desc, top);
+        }
+
+        private static bool TryGetValue(string[] args, ref int index, string flag, out string value)
+        {
+            value = string.Empty;
+            if (index + 1 >= args.Length || args[index + 1].StartsWith("--"))
+            {
+                Console.WriteLine($"Для {flag} нужно указать значение.");
+                return false;
+            }
+
+            value = args[++index];
+            return true;
+        }
+
+        private static bool TryParseStatus(string statusText, out TodoStatus status)
+        {
+            var normalizedStatus = statusText.Replace("-", "");
+            return Enum.TryParse(normalizedStatus, ignoreCase: true, out status);
         }
 
         private static ICommand ParseReadCommand(string[] args)
