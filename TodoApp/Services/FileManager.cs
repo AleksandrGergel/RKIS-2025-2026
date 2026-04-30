@@ -1,207 +1,277 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
+using TodoApp.Exceptions;
 using TodoApp.Models;
 
 namespace TodoApp.Services
 {
-    public static class FileManager
+    public class FileManager : IDataStorage
     {
-        private const string DataDir = "data";
-        private const string ProfilesFileName = "profiles.csv";
+        private const string ProfilesFileName = "profiles.dat";
 
-        public static void EnsureDataDirectory()
+        private static readonly byte[] Key = Encoding.UTF8.GetBytes("TodoAppStorageKeyForAes256Data!!");
+        private static readonly byte[] IV = Encoding.UTF8.GetBytes("TodoAppInitVect!");
+
+        private readonly string _dataDirectory;
+
+        public FileManager(string dataDirectory)
         {
-            if (!Directory.Exists(DataDir))
+            if (string.IsNullOrWhiteSpace(dataDirectory))
             {
-                Directory.CreateDirectory(DataDir);
+                throw new InvalidArgumentException("Путь к хранилищу не может быть пустым.");
+            }
+
+            _dataDirectory = dataDirectory;
+            EnsureDataDirectory();
+        }
+
+        public void SaveProfiles(IEnumerable<Profile> profiles)
+        {
+            try
+            {
+                using var writer = CreateEncryptedWriter(GetProfilesPath());
+                foreach (var profile in profiles)
+                {
+                    writer.WriteLine(SerializeProfile(profile));
+                }
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                throw new DataStorageException("Нет доступа к файлу профилей.", ex);
+            }
+            catch (IOException ex)
+            {
+                throw new DataStorageException("Не удалось сохранить профили.", ex);
+            }
+            catch (CryptographicException ex)
+            {
+                throw new DataStorageException("Не удалось зашифровать профили.", ex);
             }
         }
 
-        public static void SaveProfile(Profile profile)
+        public IEnumerable<Profile> LoadProfiles()
         {
-            EnsureDataDirectory();
-            string filePath = Path.Combine(DataDir, ProfilesFileName);
-
-            var profiles = LoadAllProfiles();
-            var existing = profiles.FirstOrDefault(p => p.Id == profile.Id);
-
-            if (existing != null)
-            {
-                profiles.Remove(existing);
-            }
-            profiles.Add(profile);
-
-            SaveAllProfiles(profiles, filePath);
-        }
-
-        public static Profile? LoadProfile(string login, string password)
-        {
-            var profiles = LoadAllProfiles();
-            return profiles.FirstOrDefault(p => p.Login == login && p.Password == password);
-        }
-
-        public static List<Profile> LoadAllProfiles()
-        {
-            EnsureDataDirectory();
-            string filePath = Path.Combine(DataDir, ProfilesFileName);
-
             var profiles = new List<Profile>();
+            string path = GetProfilesPath();
 
-            if (!File.Exists(filePath))
+            if (!File.Exists(path))
             {
                 return profiles;
             }
 
-            var lines = File.ReadAllLines(filePath);
-            foreach (var line in lines)
+            try
             {
-                if (string.IsNullOrWhiteSpace(line))
-                    continue;
-
-                var parts = line.Split(';');
-                if (parts.Length == 6
-                    && Guid.TryParse(parts[0], out var id)
-                    && int.TryParse(parts[5], out var birthYear))
+                using var reader = CreateEncryptedReader(path);
+                string? line;
+                while ((line = reader.ReadLine()) != null)
                 {
-                    var profile = new Profile
-                    {
-                        Id = id,
-                        Login = parts[1],
-                        Password = parts[2],
-                        FirstName = parts[3],
-                        LastName = parts[4],
-                        BirthYear = birthYear
-                    };
-                    profiles.Add(profile);
+                    if (string.IsNullOrWhiteSpace(line))
+                        continue;
+
+                    profiles.Add(DeserializeProfile(line));
+                }
+
+                return profiles;
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                throw new DataStorageException("Нет доступа к файлу профилей.", ex);
+            }
+            catch (IOException ex)
+            {
+                throw new DataStorageException("Не удалось прочитать профили.", ex);
+            }
+            catch (CryptographicException ex)
+            {
+                throw new DataStorageException("Не удалось расшифровать профили. Данные повреждены или ключ неверный.", ex);
+            }
+            catch (FormatException ex)
+            {
+                throw new DataStorageException("Файл профилей повреждён.", ex);
+            }
+        }
+
+        public void SaveTodos(Guid userId, IEnumerable<TodoItem> todos)
+        {
+            try
+            {
+                using var writer = CreateEncryptedWriter(GetTodosPath(userId));
+                foreach (var item in todos)
+                {
+                    writer.WriteLine(SerializeTodo(item));
                 }
             }
-
-            return profiles;
-        }
-
-        private static void SaveAllProfiles(List<Profile> profiles, string filePath)
-        {
-            var lines = new List<string>();
-            foreach (var profile in profiles)
+            catch (UnauthorizedAccessException ex)
             {
-                string line = $"{profile.Id};{profile.Login};{profile.Password};{profile.FirstName};{profile.LastName};{profile.BirthYear}";
-                lines.Add(line);
+                throw new DataStorageException("Нет доступа к файлу задач.", ex);
             }
-            File.WriteAllLines(filePath, lines);
-        }
-
-        public static void SaveTodos(TodoList todos, string filePath)
-        {
-            var lines = new List<string>();
-            int index = 0;
-
-            foreach (var item in todos.GetAll())
+            catch (IOException ex)
             {
-                string escapedText = EscapeCsv(item.Text);
-                string line = $"{index};{escapedText};{item.Status};{item.LastUpdate:yyyy-MM-ddTHH:mm:ss}";
-                lines.Add(line);
-                index++;
+                throw new DataStorageException("Не удалось сохранить задачи.", ex);
             }
-
-            File.WriteAllLines(filePath, lines);
+            catch (CryptographicException ex)
+            {
+                throw new DataStorageException("Не удалось зашифровать задачи.", ex);
+            }
         }
 
-        public static TodoList LoadTodos(string filePath)
+        public IEnumerable<TodoItem> LoadTodos(Guid userId)
         {
-            var todos = new TodoList();
+            var todos = new List<TodoItem>();
+            string path = GetTodosPath(userId);
 
-            if (!File.Exists(filePath))
+            if (!File.Exists(path))
             {
                 return todos;
             }
 
-            var lines = File.ReadAllLines(filePath);
-            foreach (var line in lines)
+            try
             {
-                if (string.IsNullOrWhiteSpace(line))
-                    continue;
-
-                var parts = ParseCsvLine(line);
-                if (parts.Count >= 4
-                    && Enum.TryParse<TodoStatus>(parts[2], out var status)
-                    && DateTime.TryParse(parts[3], out DateTime lastUpdate))
+                using var reader = CreateEncryptedReader(path);
+                string? line;
+                while ((line = reader.ReadLine()) != null)
                 {
-                    string text = UnescapeCsv(parts[1]);
+                    if (string.IsNullOrWhiteSpace(line))
+                        continue;
 
-                    var item = new TodoItem(text)
-                    {
-                        Status = status,
-                        LastUpdate = lastUpdate
-                    };
-                    todos.Add(item);
+                    todos.Add(DeserializeTodo(line));
                 }
+
+                return todos;
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                throw new DataStorageException("Нет доступа к файлу задач.", ex);
+            }
+            catch (IOException ex)
+            {
+                throw new DataStorageException("Не удалось прочитать задачи.", ex);
+            }
+            catch (CryptographicException ex)
+            {
+                throw new DataStorageException("Не удалось расшифровать задачи. Данные повреждены или ключ неверный.", ex);
+            }
+            catch (FormatException ex)
+            {
+                throw new DataStorageException("Файл задач повреждён.", ex);
+            }
+        }
+
+        private void EnsureDataDirectory()
+        {
+            if (!Directory.Exists(_dataDirectory))
+            {
+                Directory.CreateDirectory(_dataDirectory);
+            }
+        }
+
+        private StreamWriter CreateEncryptedWriter(string path)
+        {
+            var fileStream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
+            var bufferedStream = new BufferedStream(fileStream);
+            var aes = Aes.Create();
+            aes.Key = Key;
+            aes.IV = IV;
+
+            var cryptoStream = new CryptoStream(bufferedStream, aes.CreateEncryptor(), CryptoStreamMode.Write);
+            return new StreamWriter(cryptoStream, Encoding.UTF8);
+        }
+
+        private StreamReader CreateEncryptedReader(string path)
+        {
+            var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            var bufferedStream = new BufferedStream(fileStream);
+            var aes = Aes.Create();
+            aes.Key = Key;
+            aes.IV = IV;
+
+            var cryptoStream = new CryptoStream(bufferedStream, aes.CreateDecryptor(), CryptoStreamMode.Read);
+            return new StreamReader(cryptoStream, Encoding.UTF8);
+        }
+
+        private string GetProfilesPath()
+        {
+            return Path.Combine(_dataDirectory, ProfilesFileName);
+        }
+
+        private string GetTodosPath(Guid userId)
+        {
+            return Path.Combine(_dataDirectory, $"todos_{userId}.dat");
+        }
+
+        private static string SerializeProfile(Profile profile)
+        {
+            return string.Join(";",
+                profile.Id,
+                Escape(profile.Login),
+                Escape(profile.Password),
+                Escape(profile.FirstName),
+                Escape(profile.LastName),
+                profile.BirthYear);
+        }
+
+        private static Profile DeserializeProfile(string line)
+        {
+            var parts = ParseLine(line);
+            if (parts.Count != 6
+                || !Guid.TryParse(parts[0], out var id)
+                || !int.TryParse(parts[5], out var birthYear))
+            {
+                throw new FormatException("Некорректная строка профиля.");
             }
 
-            return todos;
-        }
-
-        private static string EscapeCsv(string text)
-        {
-            return "\"" + text.Replace("\"", "\"\"").Replace("\n", "\\n") + "\"";
-        }
-
-        private static string UnescapeCsv(string text)
-        {
-            return text.Trim('"').Replace("\\n", "\n").Replace("\"\"", "\"");
-        }
-
-        private static List<string> ParseCsvLine(string line)
-        {
-            var parts = new List<string>();
-            var current = new StringBuilder();
-            bool inQuotes = false;
-
-            for (int i = 0; i < line.Length; i++)
+            return new Profile
             {
-                char c = line[i];
+                Id = id,
+                Login = Unescape(parts[1]),
+                Password = Unescape(parts[2]),
+                FirstName = Unescape(parts[3]),
+                LastName = Unescape(parts[4]),
+                BirthYear = birthYear
+            };
+        }
 
-                if (c == '"')
-                {
-                    inQuotes = !inQuotes;
-                    current.Append(c);
-                }
-                else if (c == ';' && !inQuotes)
-                {
-                    parts.Add(current.ToString());
-                    current.Clear();
-                }
-                else
-                {
-                    current.Append(c);
-                }
+        private static string SerializeTodo(TodoItem item)
+        {
+            return string.Join(";",
+                Escape(item.Text),
+                item.Status,
+                item.LastUpdate.ToString("O"));
+        }
+
+        private static TodoItem DeserializeTodo(string line)
+        {
+            var parts = ParseLine(line);
+            if (parts.Count != 3
+                || !Enum.TryParse<TodoStatus>(parts[1], out var status)
+                || !DateTime.TryParse(parts[2], out var lastUpdate))
+            {
+                throw new FormatException("Некорректная строка задачи.");
             }
 
-            parts.Add(current.ToString());
-            return parts;
-        }
-
-        public static string GetTodoFilePath(Guid profileId)
-        {
-            return Path.Combine(DataDir, $"todos_{profileId}.csv");
-        }
-
-        // Метод для подписки на события TodoList
-        // Сохраняет текущий список задач при любом изменении
-        public static void SaveTodoList(TodoItem item)
-        {
-            var profile = AppInfo.CurrentProfile;
-            if (profile != null)
+            return new TodoItem(Unescape(parts[0]))
             {
-                var todoList = AppInfo.GetCurrentTodoList();
-                if (todoList != null)
-                {
-                    string filePath = GetTodoFilePath(profile.Id);
-                    SaveTodos(todoList, filePath);
-                }
-            }
+                Status = status,
+                LastUpdate = lastUpdate
+            };
+        }
+
+        private static string Escape(string value)
+        {
+            return Convert.ToBase64String(Encoding.UTF8.GetBytes(value));
+        }
+
+        private static string Unescape(string value)
+        {
+            return Encoding.UTF8.GetString(Convert.FromBase64String(value));
+        }
+
+        private static List<string> ParseLine(string line)
+        {
+            return new List<string>(line.Split(';'));
         }
     }
 }

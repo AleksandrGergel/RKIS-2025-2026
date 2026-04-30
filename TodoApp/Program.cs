@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 using System.Linq;
 using TodoApp.Commands;
 using TodoApp.Exceptions;
@@ -10,14 +9,14 @@ namespace TodoApp
 {
     class Program
     {
+        private static readonly IDataStorage Storage = new FileManager("data");
+
         static void Main()
         {
             Console.OutputEncoding = System.Text.Encoding.UTF8;
             Console.Clear();
 
-            FileManager.EnsureDataDirectory();
-            AppInfo.Profiles = FileManager.LoadAllProfiles();
-
+            AppInfo.Profiles = Storage.LoadProfiles().ToList();
             MainLoop();
         }
 
@@ -59,27 +58,15 @@ namespace TodoApp
                 throw new InvalidArgumentException("Логин и пароль не могут быть пустыми.");
             }
 
-            var profile = FileManager.LoadProfile(login, password);
+            var profile = AppInfo.Profiles.FirstOrDefault(p => p.Login == login && p.Password == password);
             if (profile == null)
             {
                 throw new AuthenticationException("Неверный логин или пароль.");
             }
 
             AppInfo.CurrentProfile = profile;
-
-            string todoPath = FileManager.GetTodoFilePath(profile.Id);
-            if (File.Exists(todoPath))
-            {
-                AppInfo.UserTodos[profile.Id] = FileManager.LoadTodos(todoPath);
-            }
-            else
-            {
-                AppInfo.UserTodos[profile.Id] = new TodoList();
-                FileManager.SaveTodos(AppInfo.UserTodos[profile.Id], todoPath);
-            }
-
-            var todoList = AppInfo.UserTodos[profile.Id];
-            SubscribeToTodoEvents(todoList);
+            AppInfo.UserTodos[profile.Id] = CreateTodoList(Storage.LoadTodos(profile.Id));
+            SubscribeToTodoEvents(profile.Id, AppInfo.UserTodos[profile.Id]);
 
             AppInfo.ClearUndoRedo();
             return true;
@@ -122,27 +109,40 @@ namespace TodoApp
 
             var profile = new Profile(login, password, firstName, lastName, birthYear);
             AppInfo.Profiles.Add(profile);
-            FileManager.SaveProfile(profile);
+            Storage.SaveProfiles(AppInfo.Profiles);
 
             AppInfo.CurrentProfile = profile;
             AppInfo.UserTodos[profile.Id] = new TodoList();
+            Storage.SaveTodos(profile.Id, AppInfo.UserTodos[profile.Id].GetAll());
 
-            string todoPath = FileManager.GetTodoFilePath(profile.Id);
-            FileManager.SaveTodos(AppInfo.UserTodos[profile.Id], todoPath);
-
-            var todoList = AppInfo.UserTodos[profile.Id];
-            SubscribeToTodoEvents(todoList);
+            SubscribeToTodoEvents(profile.Id, AppInfo.UserTodos[profile.Id]);
 
             AppInfo.ClearUndoRedo();
             return true;
         }
 
-        private static void SubscribeToTodoEvents(TodoList todoList)
+        private static TodoList CreateTodoList(System.Collections.Generic.IEnumerable<TodoItem> items)
         {
-            todoList.OnTodoAdded += FileManager.SaveTodoList;
-            todoList.OnTodoDeleted += FileManager.SaveTodoList;
-            todoList.OnTodoUpdated += FileManager.SaveTodoList;
-            todoList.OnStatusChanged += FileManager.SaveTodoList;
+            var todoList = new TodoList();
+            foreach (var item in items)
+            {
+                todoList.Add(item);
+            }
+
+            return todoList;
+        }
+
+        private static void SubscribeToTodoEvents(Guid profileId, TodoList todoList)
+        {
+            void Save(TodoItem item)
+            {
+                Storage.SaveTodos(profileId, todoList.GetAll());
+            }
+
+            todoList.OnTodoAdded += Save;
+            todoList.OnTodoDeleted += Save;
+            todoList.OnTodoUpdated += Save;
+            todoList.OnStatusChanged += Save;
         }
 
         private static void MainLoop()
@@ -178,6 +178,11 @@ namespace TodoApp
                     catch (InvalidArgumentException ex)
                     {
                         Console.WriteLine($"Ошибка аргумента: {ex.Message}");
+                        continue;
+                    }
+                    catch (DataStorageException ex)
+                    {
+                        Console.WriteLine($"Ошибка хранения данных: {ex.Message}");
                         continue;
                     }
                     catch (Exception)
@@ -222,6 +227,10 @@ namespace TodoApp
                 catch (InvalidArgumentException ex)
                 {
                     Console.WriteLine($"Ошибка аргумента: {ex.Message}");
+                }
+                catch (DataStorageException ex)
+                {
+                    Console.WriteLine($"Ошибка хранения данных: {ex.Message}");
                 }
                 catch (Exception)
                 {
