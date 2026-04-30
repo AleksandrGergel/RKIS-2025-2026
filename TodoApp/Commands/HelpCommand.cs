@@ -30,6 +30,7 @@ namespace TodoApp.Commands
                 ║    notstarted | inprogress | completed | postponed | failed     ║
                 ║ update <idx> ""новый текст"" - обновить текст задачи              ║
                 ║ delete <idx>            - удалить задачу                        ║
+                ║ load <count> <size>     - имитация параллельных загрузок        ║
                 ║ undo                    - отменить последнее действие           ║
                 ║ redo                    - повторить отменённое действие         ║
                 ║ exit                    - выход из программы                    ║

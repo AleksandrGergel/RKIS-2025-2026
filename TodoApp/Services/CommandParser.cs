@@ -31,6 +31,7 @@ namespace TodoApp.Services
                 ["status"] = args => ParseStatusCommand(SplitCommand(args)),
                 ["update"] = args => ParseUpdateCommand(SplitCommand(args)),
                 ["delete"] = args => ParseDeleteCommand(SplitCommand(args)),
+                ["load"] = args => ParseLoadCommand(SplitCommand(args)),
                 ["undo"] = args => new UndoCommand(),
                 ["redo"] = args => new RedoCommand(),
             };
@@ -186,6 +187,19 @@ namespace TodoApp.Services
             }
 
             return new DeleteCommand(ParseIndex(args[0]));
+        }
+
+        private static ICommand ParseLoadCommand(string[] args)
+        {
+            if (args.Length < 2)
+            {
+                throw new InvalidArgumentException("Используйте: load <количество_скачиваний> <размер_скачиваний>");
+            }
+
+            int downloadsCount = ParsePositiveInt(args[0], "количество_скачиваний");
+            int downloadSize = ParsePositiveInt(args[1], "размер_скачиваний");
+
+            return new LoadCommand(downloadsCount, downloadSize);
         }
 
         private static int ParseIndex(string value)
