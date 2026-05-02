@@ -32,6 +32,7 @@ namespace TodoApp.Services
                 ["update"] = args => ParseUpdateCommand(SplitCommand(args)),
                 ["delete"] = args => ParseDeleteCommand(SplitCommand(args)),
                 ["load"] = args => ParseLoadCommand(SplitCommand(args)),
+                ["sync"] = args => ParseSyncCommand(SplitCommand(args)),
                 ["undo"] = args => new UndoCommand(),
                 ["redo"] = args => new RedoCommand(),
             };
@@ -200,6 +201,25 @@ namespace TodoApp.Services
             int downloadSize = ParsePositiveInt(args[1], "размер_скачиваний");
 
             return new LoadCommand(downloadsCount, downloadSize);
+        }
+
+        private static ICommand ParseSyncCommand(string[] args)
+        {
+            bool pull = args.Any(a => a == "--pull");
+            bool push = args.Any(a => a == "--push");
+
+            if (!pull && !push)
+            {
+                throw new InvalidArgumentException("Используйте: sync --pull или sync --push");
+            }
+
+            var unknownFlag = args.FirstOrDefault(a => a != "--pull" && a != "--push");
+            if (unknownFlag != null)
+            {
+                throw new InvalidCommandException($"Неизвестный флаг sync: {unknownFlag}");
+            }
+
+            return new SyncCommand(pull, push);
         }
 
         private static int ParseIndex(string value)
