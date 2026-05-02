@@ -149,23 +149,23 @@ Kestrel, Minimal API, Controllers, Swagger, OpenAPI
 
 ---
 
-## Занятие 12. Middleware pipline
+## Занятие 12. Логирование, конвейер обработки запросов, фильтры
 
 ### Темы:
 
-—
+`ILogger`, Middleware, Filters
 
 ---
 
-## Занятие 13. Безопасность Web API
+## Занятие 13. Работа с данными в ASP.NET
 
 ### Темы:
 
-—
+`AddDbContext`, DTO, AutoMapper, Загрузка-Хранение-Возврат файлов: wwwroot, `IFormFile`, `UseStaticFiles`, `PhysicalFile`, `FileStreamResult`
 
 ---
 
-## Занятие 14. Работа с файлами Web API
+## Занятие 14. Безопасность в ASP.NET Web API
 
 ### Темы:
 
