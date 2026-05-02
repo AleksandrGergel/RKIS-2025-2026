@@ -26,11 +26,9 @@ namespace TodoApp.Commands
                 return;
             }
 
-            var localStorage = new FileManager("data");
-
             if (_pull)
             {
-                Pull(apiStorage, localStorage);
+                Pull(apiStorage);
             }
 
             if (_push)
@@ -52,11 +50,14 @@ namespace TodoApp.Commands
             Console.WriteLine("Данные отправлены на сервер.");
         }
 
-        private void Pull(ApiDataStorage apiStorage, FileManager localStorage)
+        private void Pull(ApiDataStorage apiStorage)
         {
+            var profileRepository = new ProfileRepository();
+            var todoRepository = new TodoRepository();
+
             var profiles = apiStorage.LoadProfiles().ToList();
-            AppInfo.Profiles = profiles;
-            localStorage.SaveProfiles(AppInfo.Profiles);
+            profileRepository.ReplaceAll(profiles);
+            AppInfo.Profiles = profileRepository.GetAll();
 
             if (AppInfo.CurrentProfile != null)
             {
@@ -72,19 +73,35 @@ namespace TodoApp.Commands
 
                 AppInfo.CurrentProfile = actualProfile;
                 var loadedTodos = apiStorage.LoadTodos(actualProfile.Id).ToList();
-                localStorage.SaveTodos(actualProfile.Id, loadedTodos);
+                todoRepository.ReplaceForProfile(actualProfile.Id, loadedTodos);
 
-                if (!AppInfo.UserTodos.TryGetValue(actualProfile.Id, out var todoList))
-                {
-                    todoList = new TodoList();
-                    AppInfo.UserTodos[actualProfile.Id] = todoList;
-                }
-
-                todoList.GetAll().Clear();
-                foreach (var item in loadedTodos)
+                var todoList = new TodoList();
+                foreach (var item in todoRepository.GetAll(actualProfile.Id))
                 {
                     todoList.Add(item);
                 }
+
+                todoList.OnTodoAdded += item =>
+                {
+                    item.ProfileId = actualProfile.Id;
+                    item.Profile = null;
+                    todoRepository.Add(item);
+                };
+                todoList.OnTodoDeleted += item => todoRepository.Delete(item.Id);
+                todoList.OnTodoUpdated += item =>
+                {
+                    item.ProfileId = actualProfile.Id;
+                    item.Profile = null;
+                    todoRepository.Update(item);
+                };
+                todoList.OnStatusChanged += item =>
+                {
+                    item.ProfileId = actualProfile.Id;
+                    item.Profile = null;
+                    todoRepository.Update(item);
+                };
+
+                AppInfo.UserTodos[actualProfile.Id] = todoList;
             }
 
             Console.WriteLine("Данные получены с сервера.");

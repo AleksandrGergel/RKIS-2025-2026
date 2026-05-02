@@ -1,6 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using Microsoft.EntityFrameworkCore;
 using TodoApp.Commands;
+using TodoApp.Data;
 using TodoApp.Exceptions;
 using TodoApp.Models;
 using TodoApp.Services;
@@ -9,14 +12,20 @@ namespace TodoApp
 {
     class Program
     {
-        private static readonly IDataStorage Storage = new FileManager("data");
+        private static readonly ProfileRepository ProfileRepository = new();
+        private static readonly TodoRepository TodoRepository = new();
 
         static void Main()
         {
             Console.OutputEncoding = System.Text.Encoding.UTF8;
             Console.Clear();
 
-            AppInfo.Profiles = Storage.LoadProfiles().ToList();
+            using (var context = new AppDbContext())
+            {
+                context.Database.Migrate();
+            }
+
+            AppInfo.Profiles = ProfileRepository.GetAll();
             MainLoop();
         }
 
@@ -58,14 +67,15 @@ namespace TodoApp
                 throw new InvalidArgumentException("Логин и пароль не могут быть пустыми.");
             }
 
-            var profile = AppInfo.Profiles.FirstOrDefault(p => p.Login == login && p.Password == password);
+            var profile = ProfileRepository.GetByCredentials(login, password);
             if (profile == null)
             {
                 throw new AuthenticationException("Неверный логин или пароль.");
             }
 
             AppInfo.CurrentProfile = profile;
-            AppInfo.UserTodos[profile.Id] = CreateTodoList(Storage.LoadTodos(profile.Id));
+            AppInfo.Profiles = ProfileRepository.GetAll();
+            AppInfo.UserTodos[profile.Id] = CreateTodoList(TodoRepository.GetAll(profile.Id));
             SubscribeToTodoEvents(profile.Id, AppInfo.UserTodos[profile.Id]);
 
             AppInfo.ClearUndoRedo();
@@ -82,7 +92,7 @@ namespace TodoApp
                 throw new InvalidArgumentException("Логин не может быть пустым.");
             }
 
-            if (AppInfo.Profiles.Any(p => p.Login == login))
+            if (ProfileRepository.LoginExists(login))
             {
                 throw new DuplicateLoginException("Этот логин уже занят.");
             }
@@ -108,20 +118,18 @@ namespace TodoApp
             }
 
             var profile = new Profile(login, password, firstName, lastName, birthYear);
-            AppInfo.Profiles.Add(profile);
-            Storage.SaveProfiles(AppInfo.Profiles);
+            ProfileRepository.Add(profile);
 
+            AppInfo.Profiles = ProfileRepository.GetAll();
             AppInfo.CurrentProfile = profile;
             AppInfo.UserTodos[profile.Id] = new TodoList();
-            Storage.SaveTodos(profile.Id, AppInfo.UserTodos[profile.Id].GetAll());
-
             SubscribeToTodoEvents(profile.Id, AppInfo.UserTodos[profile.Id]);
 
             AppInfo.ClearUndoRedo();
             return true;
         }
 
-        private static TodoList CreateTodoList(System.Collections.Generic.IEnumerable<TodoItem> items)
+        private static TodoList CreateTodoList(IEnumerable<TodoItem> items)
         {
             var todoList = new TodoList();
             foreach (var item in items)
@@ -134,15 +142,31 @@ namespace TodoApp
 
         private static void SubscribeToTodoEvents(Guid profileId, TodoList todoList)
         {
-            void Save(TodoItem item)
+            todoList.OnTodoAdded += item =>
             {
-                Storage.SaveTodos(profileId, todoList.GetAll());
-            }
+                item.ProfileId = profileId;
+                item.Profile = null;
+                TodoRepository.Add(item);
+            };
 
-            todoList.OnTodoAdded += Save;
-            todoList.OnTodoDeleted += Save;
-            todoList.OnTodoUpdated += Save;
-            todoList.OnStatusChanged += Save;
+            todoList.OnTodoDeleted += item =>
+            {
+                TodoRepository.Delete(item.Id);
+            };
+
+            todoList.OnTodoUpdated += item =>
+            {
+                item.ProfileId = profileId;
+                item.Profile = null;
+                TodoRepository.Update(item);
+            };
+
+            todoList.OnStatusChanged += item =>
+            {
+                item.ProfileId = profileId;
+                item.Profile = null;
+                TodoRepository.Update(item);
+            };
         }
 
         private static void MainLoop()
