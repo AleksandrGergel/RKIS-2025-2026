@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using Microsoft.EntityFrameworkCore;
 using TodoApp.Commands;
 using TodoApp.Data;
@@ -20,13 +21,67 @@ namespace TodoApp
             Console.OutputEncoding = System.Text.Encoding.UTF8;
             Console.Clear();
 
-            using (var context = new AppDbContext())
-            {
-                context.Database.Migrate();
-            }
+            EnsureDatabaseReady();
 
             AppInfo.Profiles = ProfileRepository.GetAll();
             MainLoop();
+        }
+
+        private static void EnsureDatabaseReady()
+        {
+            using var context = new AppDbContext();
+            context.Database.OpenConnection();
+
+            try
+            {
+                bool profilesTableExists = TableExists(context, "Profiles");
+                bool todosTableExists = TableExists(context, "Todos");
+
+                if (profilesTableExists != todosTableExists)
+                {
+                    throw new DataStorageException("Структура базы данных повреждена: таблицы Profiles и Todos должны существовать вместе.");
+                }
+
+                if (profilesTableExists && todosTableExists)
+                {
+                    string currentMigrationId = "20260502235345_InitialCreate";
+                    string productVersion = typeof(DbContext).Assembly
+                        .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+                        .InformationalVersion
+                        ?.Split('+')[0]
+                        ?? "8.0.6";
+
+                    context.Database.ExecuteSqlRaw(
+                        @"CREATE TABLE IF NOT EXISTS ""__EFMigrationsHistory"" (
+                            ""MigrationId"" TEXT NOT NULL CONSTRAINT ""PK___EFMigrationsHistory"" PRIMARY KEY,
+                            ""ProductVersion"" TEXT NOT NULL
+                        );");
+
+                    context.Database.ExecuteSql(
+                        $@"INSERT OR IGNORE INTO ""__EFMigrationsHistory"" (""MigrationId"", ""ProductVersion"")
+                           VALUES ({currentMigrationId}, {productVersion});");
+                }
+            }
+            finally
+            {
+                context.Database.CloseConnection();
+            }
+
+            context.Database.Migrate();
+        }
+
+        private static bool TableExists(AppDbContext context, string tableName)
+        {
+            using var command = context.Database.GetDbConnection().CreateCommand();
+            command.CommandText = @"SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = $tableName;";
+
+            var parameter = command.CreateParameter();
+            parameter.ParameterName = "$tableName";
+            parameter.Value = tableName;
+            command.Parameters.Add(parameter);
+
+            object? result = command.ExecuteScalar();
+            return result != null && Convert.ToInt32(result) > 0;
         }
 
         private static bool SelectOrCreateProfile()
