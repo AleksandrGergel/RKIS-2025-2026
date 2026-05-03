@@ -6,6 +6,8 @@ namespace TodoApp.Models
 {
     public class TodoItem
     {
+        private readonly IClock _clock;
+
         [Key]
         public int Id { get; set; }
 
@@ -22,29 +24,28 @@ namespace TodoApp.Models
         public Profile? Profile { get; set; }
 
         public TodoItem()
+            : this(string.Empty, new SystemClock())
         {
-            Text = string.Empty;
-            Status = TodoStatus.NotStarted;
-            LastUpdate = DateTime.Now;
         }
 
-        public TodoItem(string text)
+        public TodoItem(string text, IClock? clock = null)
         {
+            _clock = clock ?? new SystemClock();
             Text = text;
             Status = TodoStatus.NotStarted;
-            LastUpdate = DateTime.Now;
+            LastUpdate = _clock.Now;
         }
 
         public void UpdateText(string newText)
         {
             Text = newText;
-            LastUpdate = DateTime.Now;
+            LastUpdate = _clock.Now;
         }
 
         public void SetStatus(TodoStatus status)
         {
             Status = status;
-            LastUpdate = DateTime.Now;
+            LastUpdate = _clock.Now;
         }
 
         [NotMapped]
