@@ -13,6 +13,9 @@
 
 # Local application data
 TodoApp/todos.db
+todos.db
+todos.db-shm
+todos.db-wal
 TodoApp/local_data_backup/
 server_data/
 

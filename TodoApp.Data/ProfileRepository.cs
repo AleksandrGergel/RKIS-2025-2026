@@ -2,10 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.EntityFrameworkCore;
-using TodoApp.Data;
 using TodoApp.Models;
 
-namespace TodoApp.Services
+namespace TodoApp.Data
 {
     public class ProfileRepository
     {
@@ -18,9 +17,7 @@ namespace TodoApp.Services
         public Profile? GetByCredentials(string login, string password)
         {
             using var context = new AppDbContext();
-            return context.Profiles
-                .AsNoTracking()
-                .FirstOrDefault(p => p.Login == login && p.Password == password);
+            return context.Profiles.AsNoTracking().FirstOrDefault(p => p.Login == login && p.Password == password);
         }
 
         public Profile? GetById(Guid id)

@@ -8,11 +8,11 @@ using TodoApp.Data;
 
 #nullable disable
 
-namespace TodoApp.Migrations
+namespace TodoApp.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260502232649_AddBirthYearCheck")]
-    partial class AddBirthYearCheck
+    [Migration("20260502235345_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)

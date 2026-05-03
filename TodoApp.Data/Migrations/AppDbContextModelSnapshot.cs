@@ -2,20 +2,17 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TodoApp.Data;
 
 #nullable disable
 
-namespace TodoApp.Migrations
+namespace TodoApp.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260502232436_InitialCreate")]
-    partial class InitialCreate
+    partial class AppDbContextModelSnapshot : ModelSnapshot
     {
-        /// <inheritdoc />
-        protected override void BuildTargetModel(ModelBuilder modelBuilder)
+        protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "8.0.6");
@@ -54,7 +51,10 @@ namespace TodoApp.Migrations
                     b.HasIndex("Login")
                         .IsUnique();
 
-                    b.ToTable("Profiles");
+                    b.ToTable("Profiles", t =>
+                        {
+                            t.HasCheckConstraint("CK_Profiles_BirthYear", "BirthYear >= 1900 AND BirthYear <= 2100");
+                        });
                 });
 
             modelBuilder.Entity("TodoApp.Models.TodoItem", b =>

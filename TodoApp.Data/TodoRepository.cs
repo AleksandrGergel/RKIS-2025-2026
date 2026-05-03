@@ -2,10 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.EntityFrameworkCore;
-using TodoApp.Data;
 using TodoApp.Models;
 
-namespace TodoApp.Services
+namespace TodoApp.Data
 {
     public class TodoRepository
     {
@@ -64,17 +63,16 @@ namespace TodoApp.Services
         public void ReplaceForProfile(Guid profileId, IEnumerable<TodoItem> todos)
         {
             using var context = new AppDbContext();
-            var oldTodos = context.Todos.Where(t => t.ProfileId == profileId);
-            context.Todos.RemoveRange(oldTodos);
+            var existingTodos = context.Todos.Where(t => t.ProfileId == profileId);
+            context.Todos.RemoveRange(existingTodos);
 
             foreach (var todo in todos)
             {
-                todo.Id = 0;
                 todo.ProfileId = profileId;
                 todo.Profile = null;
-                context.Todos.Add(todo);
             }
 
+            context.Todos.AddRange(todos);
             context.SaveChanges();
         }
     }

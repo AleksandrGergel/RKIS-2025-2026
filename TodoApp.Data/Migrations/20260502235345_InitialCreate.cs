@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace TodoApp.Migrations
+namespace TodoApp.Data.Migrations
 {
     /// <inheritdoc />
     public partial class InitialCreate : Migration
@@ -25,6 +25,7 @@ namespace TodoApp.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_Profiles", x => x.Id);
+                    table.CheckConstraint("CK_Profiles_BirthYear", "BirthYear >= 1900 AND BirthYear <= 2100");
                 });
 
             migrationBuilder.CreateTable(
